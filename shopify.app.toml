@@ -3,7 +3,7 @@
 client_id = "294971e7bed957f8c7a7e813ca997c0f"
 name = "Follow The Herd"
 handle = "follow-the-herd"
-application_url = "https://bookmarks-presently-sitemap-zu.trycloudflare.com"
+application_url = "https://tunnel.scottdixon.shop"
 embedded = true
 
 [build]
@@ -23,10 +23,14 @@ api_version = "2025-07"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_products"
+scopes = "write_products, read_orders"
 
 [auth]
-redirect_urls = ["https://bookmarks-presently-sitemap-zu.trycloudflare.com/auth/callback", "https://bookmarks-presently-sitemap-zu.trycloudflare.com/auth/shopify/callback", "https://bookmarks-presently-sitemap-zu.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://tunnel.scottdixon.shop/auth/callback", "https://tunnel.scottdixon.shop/auth/shopify/callback", "https://tunnel.scottdixon.shop/api/auth/callback"]
 
 [pos]
 embedded = false
+
+[[webhooks.subscriptions]]
+topics = ["orders/create"]
+uri = "/webhooks/app/orders-create"
