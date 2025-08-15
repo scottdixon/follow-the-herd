@@ -30,3 +30,13 @@ model Session {
   collaborator  Boolean?  @default(false)
   emailVerified Boolean?  @default(false)
 }
+
+model ProductSale {
+  id        String   @id @default(cuid())
+  shop      String
+  productId BigInt
+  createdAt DateTime @default(now())
+
+  @@index([shop, createdAt])
+  @@index([shop, productId, createdAt])
+}
