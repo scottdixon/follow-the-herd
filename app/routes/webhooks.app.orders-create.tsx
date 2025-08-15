@@ -1,6 +1,11 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+import {
+  calculateMostPopularProductLastMonth,
+  updateMostPopularProduct,
+  getCurrentMostPopularProduct,
+} from "../lib/analytics.server";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop, topic, payload } = await authenticate.webhook(request);
@@ -33,6 +38,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     console.log(`Saved ${productIds.size} product sales for shop ${shop}`);
+
+    // Calculate and update the most popular product for this shop
+    try {
+      const currentMostPopular = await getCurrentMostPopularProduct(shop);
+      const newMostPopular = await calculateMostPopularProductLastMonth(shop);
+
+      if (newMostPopular && newMostPopular !== currentMostPopular) {
+        await updateMostPopularProduct(shop, newMostPopular);
+        console.log(
+          `Updated most popular product for shop ${shop}: ${newMostPopular}`,
+        );
+      } else {
+        console.log(
+          `No new most popular product for shop ${shop}: ${currentMostPopular}`,
+        );
+      }
+    } catch (analyticsError) {
+      console.error("Error updating most popular product:", analyticsError);
+      // Don't throw - this is not critical for webhook processing
+    }
   } catch (error) {
     console.error("Error processing order webhook:", error);
     // Still return success to avoid webhook retries

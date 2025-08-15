@@ -40,3 +40,11 @@ model ProductSale {
   @@index([shop, createdAt])
   @@index([shop, productId, createdAt])
 }
+
+model MostPopularProduct {
+  id        String   @id @default(cuid())
+  shop      String   @unique
+  productId BigInt
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}
