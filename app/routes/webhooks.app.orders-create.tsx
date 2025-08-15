@@ -6,11 +6,23 @@ import {
   updateMostPopularProduct,
   getCurrentMostPopularProduct,
 } from "../lib/analytics.server";
+import {
+  setMostPopularMonthlyMetafield,
+  clearPreviousMostPopularMetafield,
+} from "../lib/metafields.server";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { shop, topic, payload } = await authenticate.webhook(request);
+  const { shop, topic, payload, admin, session } =
+    await authenticate.webhook(request);
 
   console.log(`Received ${topic} webhook for ${shop}`);
+
+  // Webhook requests can trigger after an app is uninstalled
+  // If the app is already uninstalled, the session may be undefined.
+  if (!session) {
+    console.log(`No session found for shop ${shop} - app may be uninstalled`);
+    throw new Response();
+  }
 
   try {
     const order = payload as any;
@@ -45,7 +57,38 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const newMostPopular = await calculateMostPopularProductLastMonth(shop);
 
       if (newMostPopular && newMostPopular !== currentMostPopular) {
+        // Update the database record
         await updateMostPopularProduct(shop, newMostPopular);
+
+        // Update metafields in Shopify
+        if (admin) {
+          try {
+            // Clear the previous product's metafield if it exists
+            if (currentMostPopular) {
+              await clearPreviousMostPopularMetafield(
+                admin,
+                currentMostPopular,
+              );
+              console.log(
+                `Cleared metafield for previous popular product: ${currentMostPopular}`,
+              );
+            }
+
+            // Set the new product's metafield to true
+            await setMostPopularMonthlyMetafield(admin, newMostPopular, true);
+            console.log(
+              `Set metafield for new popular product: ${newMostPopular}`,
+            );
+          } catch (metafieldError) {
+            console.error("Error updating metafields:", metafieldError);
+            // Don't throw - analytics update succeeded even if metafields failed
+          }
+        } else {
+          console.log(
+            "No admin GraphQL client available - skipping metafield updates",
+          );
+        }
+
         console.log(
           `Updated most popular product for shop ${shop}: ${newMostPopular}`,
         );
