@@ -1,0 +1,16 @@
+{% assign most_popular_product = block.settings.product.metafields.custom.most_popular_monthly.value %}
+
+{% if most_popular_product %}
+  <p>Most Popular Product!</p>
+{% endif %}
+
+{% schema %}
+{
+  "name": "Most Popular Product",
+  "target": "section",
+  "settings": [
+    { "type": "product", "id": "product", "label": "product", "autofill": true },
+  ]
+}
+{% endschema %}
+
