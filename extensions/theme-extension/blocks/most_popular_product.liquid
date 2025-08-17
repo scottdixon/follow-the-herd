@@ -1,7 +1,7 @@
 {% assign most_popular_product = block.settings.product.metafields.custom.most_popular_monthly.value %}
 
-{% if most_popular_product %}
-  <p>Most Popular Product!</p>
+{% if most_popular_product or request.design_mode %}
+  <p>{{ block.settings.message | default: "Most Popular Product!" }}</p>
 {% endif %}
 
 {% schema %}
@@ -10,6 +10,13 @@
   "target": "section",
   "settings": [
     { "type": "product", "id": "product", "label": "product", "autofill": true },
+    {
+      "type": "text",
+      "id": "message",
+      "label": "Message",
+      "default": "Most Popular Product This Month!",
+      "info": "Text to display when this product is the most popular this month"
+    }
   ]
 }
 {% endschema %}
