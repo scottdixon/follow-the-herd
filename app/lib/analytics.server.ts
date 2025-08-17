@@ -7,7 +7,7 @@ import db from "../db.server";
 // Calculate the most popular product for a shop over the last month
 export async function calculateMostPopularProductLastMonth(
   shop: string,
-): Promise<BigInt | null> {
+): Promise<bigint | null> {
   const oneMonthAgo = new Date();
   oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
 
@@ -19,12 +19,12 @@ export async function calculateMostPopularProductLastMonth(
         gte: oneMonthAgo,
       },
     },
-    _count: {
-      productId: true,
+    _sum: {
+      quantity: true,
     },
     orderBy: {
-      _count: {
-        productId: "desc",
+      _sum: {
+        quantity: "desc",
       },
     },
     take: 1,
@@ -36,19 +36,19 @@ export async function calculateMostPopularProductLastMonth(
 // Update the most popular product for a shop
 export async function updateMostPopularProduct(
   shop: string,
-  productId: BigInt,
+  productId: bigint,
 ): Promise<void> {
   await db.mostPopularProduct.upsert({
     where: { shop },
-    update: { productId },
-    create: { shop, productId },
+    update: { productId: productId },
+    create: { shop, productId: productId },
   });
 }
 
 // Get the current most popular product for a shop
 export async function getCurrentMostPopularProduct(
   shop: string,
-): Promise<BigInt | null> {
+): Promise<bigint | null> {
   const result = await db.mostPopularProduct.findUnique({
     where: { shop },
     select: { productId: true },

@@ -28,28 +28,33 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const order = payload as any;
     const lineItems = order.line_items || [];
 
-    // Extract unique product IDs from the order line items
-    const productIds = new Set<string>();
+    // Extract product IDs and their quantities from the order line items
+    const productQuantities = new Map<string, number>();
     for (const item of lineItems) {
-      if (item.product_id) {
-        productIds.add(item.product_id.toString());
+      if (item.product_id && item.quantity) {
+        const productId = item.product_id.toString();
+        const currentQty = productQuantities.get(productId) || 0;
+        productQuantities.set(productId, currentQty + item.quantity);
       }
     }
 
-    // Save each unique product ID as a separate sale record
-    for (const productId of productIds) {
+    // Save each unique product ID as a separate sale record with quantity
+    for (const [productId, quantity] of productQuantities) {
       console.log(
-        `Saving product sale for shop ${shop} and product ${productId}`,
+        `Saving product sale for shop ${shop}, product ${productId}, quantity ${quantity}`,
       );
       await db.productSale.create({
         data: {
           shop,
           productId: BigInt(productId),
+          quantity: quantity,
         },
       });
     }
 
-    console.log(`Saved ${productIds.size} product sales for shop ${shop}`);
+    console.log(
+      `Saved ${productQuantities.size} product sales for shop ${shop}`,
+    );
 
     // Calculate and update the most popular product for this shop
     try {
@@ -61,32 +66,23 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         await updateMostPopularProduct(shop, newMostPopular);
 
         // Update metafields in Shopify
-        if (admin) {
-          try {
-            // Clear the previous product's metafield if it exists
-            if (currentMostPopular) {
-              await clearPreviousMostPopularMetafield(
-                admin,
-                currentMostPopular,
-              );
-              console.log(
-                `Cleared metafield for previous popular product: ${currentMostPopular}`,
-              );
-            }
-
-            // Set the new product's metafield to true
-            await setMostPopularMonthlyMetafield(admin, newMostPopular, true);
+        try {
+          // Clear the previous product's metafield if it exists
+          if (currentMostPopular) {
+            await clearPreviousMostPopularMetafield(admin, currentMostPopular);
             console.log(
-              `Set metafield for new popular product: ${newMostPopular}`,
+              `Cleared metafield for previous popular product: ${currentMostPopular}`,
             );
-          } catch (metafieldError) {
-            console.error("Error updating metafields:", metafieldError);
-            // Don't throw - analytics update succeeded even if metafields failed
           }
-        } else {
+
+          // Set the new product's metafield to true
+          await setMostPopularMonthlyMetafield(admin, newMostPopular, true);
           console.log(
-            "No admin GraphQL client available - skipping metafield updates",
+            `Set metafield for new popular product: ${newMostPopular}`,
           );
+        } catch (metafieldError) {
+          console.error("Error updating metafields:", metafieldError);
+          // Don't throw - analytics update succeeded even if metafields failed
         }
 
         console.log(

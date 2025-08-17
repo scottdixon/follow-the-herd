@@ -35,6 +35,7 @@ model ProductSale {
   id        String   @id @default(cuid())
   shop      String
   productId BigInt
+  quantity  Int      @default(1)
   createdAt DateTime @default(now())
 
   @@index([shop, createdAt])
