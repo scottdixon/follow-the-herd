@@ -56,3 +56,36 @@ export async function getCurrentMostPopularProduct(
 
   return result?.productId || null;
 }
+
+// Get top selling products for a shop (with quantities)
+export async function getTopSellingProducts(
+  shop: string,
+  limit: number = 10,
+): Promise<Array<{ productId: bigint; totalQuantity: number }>> {
+  const oneMonthAgo = new Date();
+  oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+
+  const topProducts = await db.productSale.groupBy({
+    by: ["productId"],
+    where: {
+      shop,
+      createdAt: {
+        gte: oneMonthAgo,
+      },
+    },
+    _sum: {
+      quantity: true,
+    },
+    orderBy: {
+      _sum: {
+        quantity: "desc",
+      },
+    },
+    take: limit,
+  });
+
+  return topProducts.map((product: any) => ({
+    productId: product.productId,
+    totalQuantity: product._sum.quantity || 0,
+  }));
+}

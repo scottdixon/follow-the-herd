@@ -1,122 +1,87 @@
-import { useEffect } from "react";
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { useFetcher } from "@remix-run/react";
+import type { LoaderFunctionArgs } from "@remix-run/node";
+import { useLoaderData } from "@remix-run/react";
 import {
   Page,
   Layout,
   Text,
   Card,
-  Button,
   BlockStack,
   Box,
   List,
   Link,
   InlineStack,
+  Badge,
 } from "@shopify/polaris";
-import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
+import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
+import { getTopSellingProducts } from "../lib/analytics.server";
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
-
-  return null;
+type ProductRanking = {
+  id: string;
+  title: string;
+  totalQuantity: number;
+  rank: number;
 };
 
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
-  const color = ["Red", "Orange", "Yellow", "Green"][
-    Math.floor(Math.random() * 4)
-  ];
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const { admin, session } = await authenticate.admin(request);
+
+  // Get top selling products from our database
+  const topProducts = await getTopSellingProducts(session.shop, 10);
+
+  if (topProducts.length === 0) {
+    return { rankings: [] };
+  }
+
+  // Convert BigInt IDs to GIDs and fetch product titles
+  const productIds = topProducts.map(
+    (p) => `gid://shopify/Product/${p.productId}`,
+  );
+
   const response = await admin.graphql(
     `#graphql
-      mutation populateProduct($product: ProductCreateInput!) {
-        productCreate(product: $product) {
-          product {
+      query GetProductTitles($ids: [ID!]!) {
+        nodes(ids: $ids) {
+          ... on Product {
             id
             title
-            handle
-            status
-            variants(first: 10) {
-              edges {
-                node {
-                  id
-                  price
-                  barcode
-                  createdAt
-                }
-              }
-            }
           }
         }
       }`,
     {
-      variables: {
-        product: {
-          title: `${color} Snowboard`,
-        },
-      },
+      variables: { ids: productIds },
     },
   );
+
   const responseJson = await response.json();
-
-  const product = responseJson.data!.productCreate!.product!;
-  const variantId = product.variants.edges[0]!.node!.id!;
-
-  const variantResponse = await admin.graphql(
-    `#graphql
-    mutation shopifyRemixTemplateUpdateVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-      productVariantsBulkUpdate(productId: $productId, variants: $variants) {
-        productVariants {
-          id
-          price
-          barcode
-          createdAt
-        }
-      }
-    }`,
-    {
-      variables: {
-        productId: product.id,
-        variants: [{ id: variantId, price: "100.00" }],
-      },
-    },
+  const products = (responseJson.data?.nodes || []).filter(
+    (p: any) => p !== null,
   );
 
-  const variantResponseJson = await variantResponse.json();
+  // Combine product data with sales data
+  const rankings: ProductRanking[] = topProducts
+    .map((salesData, index) => {
+      const productId = `gid://shopify/Product/${salesData.productId}`;
+      const product = products.find((p: any) => p && p.id === productId);
 
-  return {
-    product: responseJson!.data!.productCreate!.product,
-    variant:
-      variantResponseJson!.data!.productVariantsBulkUpdate!.productVariants,
-  };
+      return {
+        id: productId,
+        title: product?.title || `Product ${salesData.productId}`,
+        totalQuantity: salesData.totalQuantity,
+        rank: index + 1,
+      };
+    })
+    .filter((ranking) => ranking.totalQuantity > 0);
+
+  return { rankings };
 };
 
 export default function Index() {
-  const fetcher = useFetcher<typeof action>();
-
-  const shopify = useAppBridge();
-  const isLoading =
-    ["loading", "submitting"].includes(fetcher.state) &&
-    fetcher.formMethod === "POST";
-  const productId = fetcher.data?.product?.id.replace(
-    "gid://shopify/Product/",
-    "",
-  );
-
-  useEffect(() => {
-    if (productId) {
-      shopify.toast.show("Product created");
-    }
-  }, [productId, shopify]);
-  const generateProduct = () => fetcher.submit({}, { method: "POST" });
+  const { rankings } = useLoaderData<typeof loader>();
 
   return (
     <Page>
-      <TitleBar title="Remix app template">
-        <button variant="primary" onClick={generateProduct}>
-          Generate a product
-        </button>
-      </TitleBar>
+      <TitleBar title="Follow The Herd" />
       <BlockStack gap="500">
         <Layout>
           <Layout.Section>
@@ -124,205 +89,99 @@ export default function Index() {
               <BlockStack gap="500">
                 <BlockStack gap="200">
                   <Text as="h2" variant="headingMd">
-                    Congrats on creating a new Shopify app 🎉
+                    Welcome to Follow The Herd 🐑
                   </Text>
                   <Text variant="bodyMd" as="p">
-                    This embedded app template uses{" "}
-                    <Link
-                      url="https://shopify.dev/docs/apps/tools/app-bridge"
-                      target="_blank"
-                      removeUnderline
-                    >
-                      App Bridge
-                    </Link>{" "}
-                    interface examples like an{" "}
-                    <Link url="/app/additional" removeUnderline>
-                      additional page in the app nav
-                    </Link>
-                    , as well as an{" "}
-                    <Link
-                      url="https://shopify.dev/docs/api/admin-graphql"
-                      target="_blank"
-                      removeUnderline
-                    >
-                      Admin GraphQL
-                    </Link>{" "}
-                    mutation demo, to provide a starting point for app
-                    development.
+                    Show customers what's trending and selling fast to build
+                    confidence and urgency. When shoppers see what others are
+                    buying, they don't want to miss out!
                   </Text>
                 </BlockStack>
+
                 <BlockStack gap="200">
                   <Text as="h3" variant="headingMd">
-                    Get started with products
+                    Top Selling Products (Last 30 Days)
                   </Text>
-                  <Text as="p" variant="bodyMd">
-                    Generate a product with GraphQL and get the JSON output for
-                    that product. Learn more about the{" "}
-                    <Link
-                      url="https://shopify.dev/docs/api/admin-graphql/latest/mutations/productCreate"
-                      target="_blank"
-                      removeUnderline
+
+                  {rankings.length === 0 ? (
+                    <Text as="p" variant="bodyMd" tone="subdued">
+                      No sales data yet. Products will appear here as orders are
+                      placed.
+                    </Text>
+                  ) : (
+                    <Box
+                      padding="400"
+                      background="bg-surface-secondary"
+                      borderWidth="025"
+                      borderRadius="200"
+                      borderColor="border"
                     >
-                      productCreate
-                    </Link>{" "}
-                    mutation in our API references.
-                  </Text>
-                </BlockStack>
-                <InlineStack gap="300">
-                  <Button loading={isLoading} onClick={generateProduct}>
-                    Generate a product
-                  </Button>
-                  {fetcher.data?.product && (
-                    <Button
-                      url={`shopify:admin/products/${productId}`}
-                      target="_blank"
-                      variant="plain"
-                    >
-                      View product
-                    </Button>
+                      <BlockStack gap="300">
+                        {rankings.slice(0, 10).map((product) => (
+                          <Box
+                            key={product.id}
+                            padding="300"
+                            background="bg-surface"
+                            borderWidth="025"
+                            borderRadius="200"
+                            borderColor="border"
+                          >
+                            <InlineStack align="space-between">
+                              <InlineStack gap="200" align="center">
+                                <Badge
+                                  tone={product.rank === 1 ? "success" : "info"}
+                                >
+                                  {product.rank === 1
+                                    ? "👑 #1"
+                                    : `#${product.rank}`}
+                                </Badge>
+                                <Text
+                                  as="span"
+                                  variant="bodyMd"
+                                  fontWeight={
+                                    product.rank === 1 ? "bold" : "medium"
+                                  }
+                                >
+                                  {product.title}
+                                </Text>
+                                {product.rank === 1 && (
+                                  <Badge tone="success" size="small">
+                                    Most Popular
+                                  </Badge>
+                                )}
+                              </InlineStack>
+                              <Text as="span" variant="bodyMd" tone="subdued">
+                                {product.totalQuantity} sold
+                              </Text>
+                            </InlineStack>
+                          </Box>
+                        ))}
+                      </BlockStack>
+                    </Box>
                   )}
-                </InlineStack>
-                {fetcher.data?.product && (
-                  <>
-                    <Text as="h3" variant="headingMd">
-                      {" "}
-                      productCreate mutation
-                    </Text>
-                    <Box
-                      padding="400"
-                      background="bg-surface-active"
-                      borderWidth="025"
-                      borderRadius="200"
-                      borderColor="border"
-                      overflowX="scroll"
-                    >
-                      <pre style={{ margin: 0 }}>
-                        <code>
-                          {JSON.stringify(fetcher.data.product, null, 2)}
-                        </code>
-                      </pre>
-                    </Box>
-                    <Text as="h3" variant="headingMd">
-                      {" "}
-                      productVariantsBulkUpdate mutation
-                    </Text>
-                    <Box
-                      padding="400"
-                      background="bg-surface-active"
-                      borderWidth="025"
-                      borderRadius="200"
-                      borderColor="border"
-                      overflowX="scroll"
-                    >
-                      <pre style={{ margin: 0 }}>
-                        <code>
-                          {JSON.stringify(fetcher.data.variant, null, 2)}
-                        </code>
-                      </pre>
-                    </Box>
-                  </>
-                )}
+                </BlockStack>
               </BlockStack>
             </Card>
           </Layout.Section>
+
           <Layout.Section variant="oneThird">
             <BlockStack gap="500">
               <Card>
                 <BlockStack gap="200">
                   <Text as="h2" variant="headingMd">
-                    App template specs
+                    How It Works
                   </Text>
                   <BlockStack gap="200">
-                    <InlineStack align="space-between">
-                      <Text as="span" variant="bodyMd">
-                        Framework
-                      </Text>
-                      <Link
-                        url="https://remix.run"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        Remix
-                      </Link>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text as="span" variant="bodyMd">
-                        Database
-                      </Text>
-                      <Link
-                        url="https://www.prisma.io/"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        Prisma
-                      </Link>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text as="span" variant="bodyMd">
-                        Interface
-                      </Text>
-                      <span>
-                        <Link
-                          url="https://polaris.shopify.com"
-                          target="_blank"
-                          removeUnderline
-                        >
-                          Polaris
-                        </Link>
-                        {", "}
-                        <Link
-                          url="https://shopify.dev/docs/apps/tools/app-bridge"
-                          target="_blank"
-                          removeUnderline
-                        >
-                          App Bridge
-                        </Link>
-                      </span>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text as="span" variant="bodyMd">
-                        API
-                      </Text>
-                      <Link
-                        url="https://shopify.dev/docs/api/admin-graphql"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        GraphQL API
-                      </Link>
-                    </InlineStack>
+                    <Text as="p" variant="bodyMd">
+                      Follow The Herd automatically tracks sales data from your
+                      orders and identifies trending products based on
+                      quantities sold.
+                    </Text>
+                    <Text as="p" variant="bodyMd">
+                      The most popular product gets a special metafield that you
+                      can use in your theme to highlight trending items.
+                    </Text>
                   </BlockStack>
-                </BlockStack>
-              </Card>
-              <Card>
-                <BlockStack gap="200">
-                  <Text as="h2" variant="headingMd">
-                    Next steps
-                  </Text>
-                  <List>
-                    <List.Item>
-                      Build an{" "}
-                      <Link
-                        url="https://shopify.dev/docs/apps/getting-started/build-app-example"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        {" "}
-                        example app
-                      </Link>{" "}
-                      to get started
-                    </List.Item>
-                    <List.Item>
-                      Explore Shopify’s API with{" "}
-                      <Link
-                        url="https://shopify.dev/docs/apps/tools/graphiql-admin-api"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        GraphiQL
-                      </Link>
-                    </List.Item>
-                  </List>
                 </BlockStack>
               </Card>
             </BlockStack>
